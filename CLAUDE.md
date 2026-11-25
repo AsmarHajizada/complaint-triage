@@ -43,7 +43,7 @@ The CFPB Consumer Complaint Database, published by the US Consumer Financial Pro
 2. Sample about 5,000, spread evenly across products. Hold out 500 for evaluation and never train on them.
 3. Label them with a teacher model. Read 50 teacher labels by hand before training on any.
 4. Baseline: run an untrained 4B model on the 500 held-out complaints.
-5. QLoRA fine-tune the 4B model on the teacher's labels with Unsloth, then evaluate again.
+5. Fine-tune Qwen3.5-4B on the teacher's labels with 16-bit LoRA (not QLoRA) using Unsloth, then evaluate again. Unsloth's Qwen3.5 page says QLoRA 4-bit is "not recommended" for this model and gives about 10 GB of GPU memory for 16-bit LoRA on the 4B (their figure, not measured here). Chosen by the owner on 2026-11-25. Unsloth also says Qwen3.5 needs transformers v5.
 6. Quantize the fine-tuned model to GGUF with llama.cpp at several levels and evaluate each.
 
 Metrics: valid-JSON rate and accuracy per field, compared with the teacher. For product and issue, also compare with the CFPB's own categories.
@@ -55,17 +55,17 @@ Metrics: valid-JSON rate and accuracy per field, compared with the teacher. For 
 - `customer_wants` values (approved 2026-11-25): `refund`, `fix_credit_report`, `fix_account_record`, `restore_access_or_funds`, `debt_relief`, `stop_activity`, `provide_information`, `review_or_investigate`, `fulfil_request`, `close_account`, `other`, plus `null`. Rule: if the customer states no ask, give the obvious remedy; use `null` only when no remedy is evident.
 - `amount` is one string with its currency code, such as `"460.00 USD"`. All training amounts are dollars, because CFPB is US data, so manat amounts are untested until the hand-written test set exists.
 - Translation model: Luna, chosen on 2026-11-25 by the owner's blind rating of 10 translations (all three were acceptable, so the cheapest won).
+- `urgency` is dropped from the student's training target (decided 2026-11-25): the teacher labeled 89% of 4,431 training complaints `medium`, so it carries no signal. The labels with `urgency` are kept untouched in `data/processed/labels.jsonl` and in a read-only copy, `data/processed/labels_with_urgency.jsonl`. Add it back only with a rule from someone who knows what a bank treats as urgent. The training-file builder and `scripts/score.py --skip urgency` leave it out.
+- Student: Qwen3.5-4B (chosen 2026-11-25), trained on Runpod with Unsloth. A first trial of the untrained model runs on the Mac (16 GB, llama.cpp, Q4_K_M GGUF from `unsloth/Qwen3.5-4B-GGUF`). Qwen3.5 thinks by default: turn thinking off with `enable_thinking: false`.
 - Labeling model: GPT-6.1 Terra, chosen by the owner on 2026-11-25 without a blind rating (a 10-complaint blind test was run and not read). Read 50 labels by hand before training, as the plan says.
-- Student: a 4B model such as Qwen3-4B or Gemma 3 4B. Check Hugging Face for newer models in that size class before choosing.
 - Training tool: Unsloth.
 
 ## Still open
 
-- Final schema and prompt: `urgency` is still a guess and needs a rule from someone who knows what a bank treats as urgent.
-- Which OpenAI model labels the training set (the blind labeling test decides).
-- Whether Qwen3-4B or Gemma 3 4B handle Azerbaijani well enough as the student.
+- The student's training format (which fields, which prompt) is built from `labels.jsonl` without `urgency`. Not written yet.
+- Whether Qwen3.5-4B handles Azerbaijani well enough. The Mac trial of the untrained model is the first evidence.
 - The hand-written Azerbaijani test set.
-- Where to train: the local GPU or a Runpod pod.
+- Which Runpod GPU and template to train on (price quote and explicit go before any pod).
 
 ## Hardware
 

@@ -26,7 +26,8 @@ from labeling import (
     label,
     load_allowed,
 )
-from translation import cost
+from pydantic import ValidationError
+from translation import cost, kept_unchanged
 
 MODEL = "gpt-6.1-terra"
 SEED = 20261124
@@ -78,8 +79,15 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--limit", type=int, help="label only this many, for a trial run")
 args = parser.parse_args()
 
-translations = pd.DataFrame(read_lines(SRC))
-usable = translations[translations["translation"].notna() & translations["placeholders_kept"]]
+sample = pd.read_parquet("data/processed/sample.parquet")[["complaint_id", "narrative"]]
+translations = pd.DataFrame(read_lines(SRC)).merge(sample, on="complaint_id")
+# The placeholder check is recomputed here, not read from the file, so that a change to the rule
+# applies to translations that were written under the old one.
+translations["usable"] = [
+    isinstance(text, str) and kept_unchanged(source, text)
+    for source, text in zip(translations["narrative"], translations["translation"], strict=True)
+]
+usable = translations[translations["usable"]]
 done = set()
 if OUT.exists():
     done = {r["complaint_id"] for r in read_lines(OUT) if r["record"] is not None}
@@ -92,34 +100,52 @@ print(
     f"{len(todo)} to do"
 )
 
-written = unparsed = misfit = bad_amount = 0
-with ThreadPoolExecutor(WORKERS) as pool, OUT.open("a", encoding="utf-8") as f:
-    futures = [pool.submit(run, row) for row in todo.itertuples()]
-    for n, future in enumerate(as_completed(futures), 1):
-        try:
-            result = future.result()
-        except (openai.BadRequestError, openai.AuthenticationError):
-            pool.shutdown(wait=False, cancel_futures=True)
-            raise  # the request or the key is wrong, so every call would fail
-        except (openai.APIStatusError, openai.APIConnectionError) as e:
-            print(f"skipped one ({type(e).__name__}); rerun to retry it")
-            continue
-        if result is None:
-            continue
-        f.write(json.dumps(result, ensure_ascii=False) + "\n")
-        f.flush()
-        written += 1
-        if result["record"] is None:
-            unparsed += 1
-        else:
-            misfit += (
-                result["issue_fits_product"] is False or result["sub_product_fits_product"] is False
-            )
-            bad_amount += result["amount_format_ok"] is False
-        if n % 250 == 0 or n == len(futures):
-            print(f"{n}/{len(futures)} done, ${spent:.2f} so far")
+
+def process(rows, workers):
+    """Label the rows and append each result to OUT. Returns the IDs that failed."""
+    failed = []
+    with ThreadPoolExecutor(workers) as pool, OUT.open("a", encoding="utf-8") as f:
+        futures = {pool.submit(run, row): row.complaint_id for row in rows.itertuples()}
+        for n, future in enumerate(as_completed(futures), 1):
+            try:
+                result = future.result()
+            except (openai.BadRequestError, openai.AuthenticationError):
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise  # the request or the key is wrong, so every call would fail
+            except (openai.APIStatusError, openai.APIConnectionError) as e:
+                failed.append(futures[future])
+                print(f"failed {futures[future]} ({type(e).__name__})")
+                continue
+            except ValidationError:
+                failed.append(futures[future])
+                print(f"failed {futures[future]} (output cut off or not valid)")
+                continue
+            if result is None:
+                continue
+            f.write(json.dumps(result, ensure_ascii=False) + "\n")
+            f.flush()
+            if result["record"] is None:
+                failed.append(futures[future])
+            if n % 250 == 0 or n == len(futures):
+                print(f"{n}/{len(futures)} done, ${spent:.2f} so far")
+    return failed
+
+
+failed = process(todo, WORKERS)
+if failed:
+    # Looked at again once more, with fewer parallel requests, before giving up on them.
+    print(f"retrying {len(failed)} failed complaints")
+    failed = process(todo[todo["complaint_id"].isin(failed)], 4)
+Path("data/processed/label_failures.txt").write_text("".join(f"{i}\n" for i in failed))
+
+records = [r for r in read_lines(OUT) if r["record"] is not None]
+misfit = sum(
+    r["issue_fits_product"] is False or r["sub_product_fits_product"] is False for r in records
+)
+bad_amount = sum(r["amount_format_ok"] is False for r in records)
 print(
-    f"wrote {written} lines: {unparsed} without a record, {misfit} with an issue or sub-product "
-    f"from another product, {bad_amount} with a malformed amount, ${spent:.2f} total"
-    + (" (cost limit reached)" if spent > MAX_COST else "")
+    f"finished: ${spent:.2f} total, {len(failed)} complaints still without a record "
+    "(listed in data/processed/label_failures.txt; a rerun tries them again). "
+    f"Of {len(records)} labeled: {misfit} with an issue or sub-product from another product, "
+    f"{bad_amount} with a malformed amount" + (" (cost limit reached)" if spent > MAX_COST else "")
 )

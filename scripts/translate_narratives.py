@@ -16,6 +16,7 @@ from pathlib import Path
 
 import openai
 import pandas as pd
+from pydantic import ValidationError
 from translation import (
     PROMPT_VERSION,
     cost,
@@ -78,30 +79,47 @@ if args.limit:
     todo = todo[todo["split"] == "train"].sample(n=args.limit, random_state=SEED)
 print(f"{len(done)} already translated, {len(todo)} to do")
 
-written = changed = unparsed = 0
-with ThreadPoolExecutor(WORKERS) as pool, OUT.open("a", encoding="utf-8") as f:
-    futures = [pool.submit(run, row) for row in todo.itertuples()]
-    for n, future in enumerate(as_completed(futures), 1):
-        try:
-            record = future.result()
-        except (openai.BadRequestError, openai.AuthenticationError):
-            pool.shutdown(wait=False, cancel_futures=True)
-            raise  # the request or the key is wrong, so every call would fail
-        except (openai.APIStatusError, openai.APIConnectionError) as e:
-            print(f"skipped one ({type(e).__name__}); rerun to retry it")
-            continue
-        if record is None:
-            continue
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        f.flush()
-        written += 1
-        if record["translation"] is None:
-            unparsed += 1
-        elif not record["placeholders_kept"]:
-            changed += 1
-        if n % 250 == 0 or n == len(futures):
-            print(f"{n}/{len(futures)} done, ${spent:.2f} so far")
+
+def process(rows, workers):
+    """Translate the rows and append each result to OUT. Returns the IDs that failed."""
+    failed = []
+    with ThreadPoolExecutor(workers) as pool, OUT.open("a", encoding="utf-8") as f:
+        futures = {pool.submit(run, row): row.complaint_id for row in rows.itertuples()}
+        for n, future in enumerate(as_completed(futures), 1):
+            try:
+                record = future.result()
+            except (openai.BadRequestError, openai.AuthenticationError):
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise  # the request or the key is wrong, so every call would fail
+            except (openai.APIStatusError, openai.APIConnectionError) as e:
+                failed.append(futures[future])
+                print(f"failed {futures[future]} ({type(e).__name__})")
+                continue
+            except ValidationError:
+                # The model kept writing until max_output_tokens and the JSON was cut off.
+                # This happens with complaints that are mostly XXXX.
+                failed.append(futures[future])
+                print(f"failed {futures[future]} (output cut off)")
+                continue
+            if record is None:
+                continue
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+            if record["translation"] is None:
+                failed.append(futures[future])
+            if n % 250 == 0 or n == len(futures):
+                print(f"{n}/{len(futures)} done, ${spent:.2f} so far")
+    return failed
+
+
+failed = process(todo, WORKERS)
+if failed:
+    # Looked at again once more, with fewer parallel requests, before giving up on them.
+    print(f"retrying {len(failed)} failed complaints")
+    failed = process(todo[todo["complaint_id"].isin(failed)], 4)
+Path("data/processed/translation_failures.txt").write_text("".join(f"{i}\n" for i in failed))
 print(
-    f"wrote {written} lines: {unparsed} without a translation, {changed} that changed an amount, "
-    f"date or redaction, ${spent:.2f} total" + (" (cost limit reached)" if spent > MAX_COST else "")
+    f"finished: ${spent:.2f} total, {len(failed)} complaints still without a translation "
+    "(listed in data/processed/translation_failures.txt; a rerun tries them again)"
+    + (" (cost limit reached)" if spent > MAX_COST else "")
 )
