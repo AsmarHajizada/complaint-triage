@@ -1,6 +1,6 @@
 # complaint-triage
 
-Distill a large language model into a small one that turns a bank-customer complaint into a structured triage record (JSON). The small model should run locally on a 16 GB GPU. This is a personal learning project and it is at an early stage.
+Distill a large language model into a small one that turns a bank-customer complaint, written in Azerbaijani, into a structured triage record (JSON). The training complaints are machine translations of public English CFPB complaints. The small model should run locally on a 16 GB GPU. This is a personal learning project and it is at an early stage.
 
 ## Status
 
@@ -14,6 +14,8 @@ The plan, the decisions made and the open questions are in [CLAUDE.md](CLAUDE.md
 The complaints come from the CFPB Consumer Complaint Database. The live bulk CSV has no narrative column, so the project uses CFPB's [narratives archive](https://www.consumerfinance.gov/foia-requests/foia-electronic-reading-room/cfpb-consumer-complaint-database-narratives-archive/): 21 zip files covering December 2011 to August 2026, with 3,851,415 complaints that have a narrative. Narratives are redacted by CFPB (shown as XXXX). The data is not stored in this repository.
 
 The sample uses complaints received from 2024-01 to 2025-12, because CFPB renamed products over the years. It holds 5,000 complaints, even across the 11 products, after removing exact repeats and near-copies of the same template letter. 500 of them are held out for evaluation. Their IDs are in `splits/heldout_ids.txt`. Those complaints are never used for training and never read while designing the schema or prompts.
+
+Planned: the narratives are translated into Azerbaijani with an OpenAI model before labeling. Machine-translated text is not real customer text, so the evaluation also uses a small test set of complaints written by hand in Azerbaijani.
 
 ## Setup
 
@@ -41,4 +43,4 @@ Tests and lint: `uv run pytest`, `uv run ruff check scripts tests` and `uv run r
 
 ## Terms of the labeling model
 
-Labels will come from OpenAI models through the API. OpenAI's Services Agreement (version dated 2026-01-01, section 3.3(e)) forbids using Output to develop competing models, except models primarily intended to categorize or classify data that are not distributed or made commercially available to third parties. Check the current text before sharing a trained model.
+Labels and translations come from OpenAI models through the API. OpenAI's Services Agreement (version dated 2026-01-01, section 3.3(e)) forbids using Output to develop competing models, except models primarily intended to categorize or classify data that are not distributed or made commercially available to third parties. For that reason the trained model's weights and the OpenAI-labeled data are not published. This repository holds the code, which anyone can run with their own API key.

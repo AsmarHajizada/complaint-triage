@@ -6,7 +6,7 @@ Status as of 2026-11-25: the narrative data is downloaded, a 5,000-complaint sam
 
 ## The task
 
-Input: the free-text narrative of one consumer complaint.
+Input: the free-text narrative of one consumer complaint, in Azerbaijani. The training narratives are OpenAI machine translations of the English CFPB narratives. CFPB categories, `customer_wants` and `urgency` keep English values. `summary` is in Azerbaijani. Labels are made from the Azerbaijani text.
 Output: one JSON object. Draft schema (field names and allowed values are not final):
 
 ```json
@@ -48,14 +48,17 @@ Metrics: valid-JSON rate and accuracy per field, compared with the teacher. For 
 
 ## Decisions made
 
-- Teacher: an OpenAI model through the API (GPT-6.1 Terra for exploration; Luna, Terra or Sol for labeling, chosen after a 10-complaint comparison). Anthropic's Usage Policy forbids training on its outputs without authorization. OpenAI's Services Agreement 3.3(e) allows it for classifiers that are not distributed to third parties. The open-weights teacher (around 30B) on Runpod is the fallback.
+- Teacher: OpenAI models through the API (Luna, Terra or Sol, chosen by tests the owner reads, because the owner is the one who reads Azerbaijani). Decided 2026-11-25: the trained weights and the OpenAI-labeled data are never published or given to anyone, because OpenAI's Services Agreement 3.3(e) allows classifiers only if they are not distributed to third parties. Code can be shared. Publishing weights later would mean relabeling with an open-weights model. Anthropic's Usage Policy forbids training on its outputs without authorization, and Gemini's terms forbid developing competing models, so neither is used.
+- Language: Azerbaijani. The owner's contribution is reviewing translations and labels, and writing a test set of 50 to 100 complaints in the style of real Azerbaijani customers (no bank data).
 - Student: a 4B model such as Qwen3-4B or Gemma 3 4B. Check Hugging Face for newer models in that size class before choosing.
 - Training tool: Unsloth.
 
 ## Still open
 
 - Final schema, including the allowed values for `customer_wants` (exploration pending) and `urgency`.
-- Which OpenAI model labels the training set.
+- Which OpenAI model translates, and which labels the training set.
+- Whether Qwen3-4B or Gemma 3 4B handle Azerbaijani well enough as the student.
+- The hand-written Azerbaijani test set.
 - Where to train: the local GPU or a Runpod pod.
 
 ## Hardware
