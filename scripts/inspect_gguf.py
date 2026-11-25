@@ -15,8 +15,14 @@ Run from anywhere (uv installs the gguf package for this script by itself):
 """
 
 import argparse
+import math
 import re
 from collections import defaultdict
+
+
+def n_params(shape):
+    """Return the number of parameters in a tensor with this shape."""
+    return math.prod(int(dim) for dim in shape)
 
 
 def summarize(tensors):
@@ -27,12 +33,9 @@ def summarize(tensors):
     """
     by_type = defaultdict(lambda: {"count": 0, "params": 0, "bytes": 0})
     for _name, shape, type_name, n_bytes in tensors:
-        params = 1
-        for dim in shape:
-            params *= int(dim)
         entry = by_type[type_name]
         entry["count"] += 1
-        entry["params"] += params
+        entry["params"] += n_params(shape)
         entry["bytes"] += int(n_bytes)
     return dict(by_type)
 
@@ -44,10 +47,7 @@ def by_tensor_name(tensors):
     """
     groups = defaultdict(lambda: defaultdict(int))
     for name, shape, type_name, _n_bytes in tensors:
-        params = 1
-        for dim in shape:
-            params *= int(dim)
-        groups[re.sub(r"\.\d+\.", ".N.", name)][type_name] += params
+        groups[re.sub(r"\.\d+\.", ".N.", name)][type_name] += n_params(shape)
     return {name: dict(types) for name, types in groups.items()}
 
 
