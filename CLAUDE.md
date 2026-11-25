@@ -2,7 +2,7 @@
 
 Personal learning project: distill a large language model into a small one that turns a raw bank-customer complaint into a structured triage record (JSON). The small model should run locally on a 16 GB GPU.
 
-Status as of 2026-11-25: the narrative data is downloaded, a 5,000-complaint sample is drawn (near-copies removed), the `customer_wants` values are settled from an exploration run, and the 5,000 complaints are being translated into Azerbaijani with Luna (`scripts/translate_narratives.py`). Next: a blind test of three models labeling 10 translated complaints. Nothing is labeled or trained.
+Status as of 2026-11-25: 5,000 complaints are sampled, translated into Azerbaijani (Luna) and labeled (Terra), and `urgency` is dropped from the training target. An untrained Qwen3.5-4B (Mac, Q4_K_M) was scored on 100 training complaints: 99 valid records, agreement with the teacher 69% on product and 34% on issue. Next: the baseline on the held-out complaints, then the training-data builder and a 16-bit LoRA run on Runpod. Nothing is trained.
 
 ## The task
 
@@ -35,7 +35,7 @@ The CFPB Consumer Complaint Database, published by the US Consumer Financial Pro
 - `scripts/make_sample.py` draws 5,000 complaints from 2024-01 to 2025-12, even across the 11 products, after removing exact repeats and near-copies (three-word-phrase similarity of 0.2 or more). The first sample had 42 of 500 held-out complaints with a near-copy in training. Filter to `split == "train"` whenever reading the sample, and never read held-out rows while designing the schema or prompts.
 - `scripts/explore_wants.py` asked `gpt-6.1-terra` an open question about 1,001 training complaints (91 per product) to design the `customer_wants` values. It cost $1.21. `scripts/group_wants.py` then grouped the 744 distinct phrasings of the 973 main asks into categories (`data/exploration/wants_groups.json`, $0.13). About half of the main asks were only implied, not stated.
 - `scripts/translate_narratives.py` translates all 5,000 sampled complaints into Azerbaijani with `gpt-6-luna` (prompt `translate-v2`, about $1). Translations that change a redaction, amount or date are flagged and must be excluded or redone.
-- Never use data from the owner's employer (a bank). Public data only.
+- Public data only. Never use data from any employer or private source.
 
 ## Plan
 
