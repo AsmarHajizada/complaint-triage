@@ -26,13 +26,13 @@ from translation import (
 
 MODEL = "gpt-6-luna"
 SEED = 20261124
-WORKERS = 6  # requests sent at the same time
+WORKERS = 16  # requests sent at the same time
 # Dollars. No new request starts once the total passes this; requests already running
 # can overshoot it by a few cents.
 MAX_COST = 3.00
 OUT = Path("data/processed/translations.jsonl")
 
-client = openai.OpenAI(max_retries=5)
+client = openai.OpenAI(max_retries=5, timeout=60)  # seconds; a stuck request is dropped and retried
 spent = 0.0
 
 

@@ -2,20 +2,21 @@
 
 Personal learning project: distill a large language model into a small one that turns a raw bank-customer complaint into a structured triage record (JSON). The small model should run locally on a 16 GB GPU.
 
-Status as of 2026-11-25: the narrative data is downloaded, a 5,000-complaint sample is drawn (near-copies removed), and `scripts/explore_wants.py` was trialled on 20 complaints. The schema is not final. Nothing is labeled or trained.
+Status as of 2026-11-25: the narrative data is downloaded, a 5,000-complaint sample is drawn (near-copies removed), the `customer_wants` values are settled from an exploration run, and the 5,000 complaints are being translated into Azerbaijani with Luna (`scripts/translate_narratives.py`). Next: a blind test of three models labeling 10 translated complaints. Nothing is labeled or trained.
 
 ## The task
 
 Input: the free-text narrative of one consumer complaint, in Azerbaijani. The training narratives are OpenAI machine translations of the English CFPB narratives. CFPB categories, `customer_wants` and `urgency` keep English values. `summary` is in Azerbaijani. Labels are made from the Azerbaijani text.
-Output: one JSON object. Draft schema (field names and allowed values are not final):
+Output: one JSON object with these fields in this order. The prompt and the schema are in `scripts/labeling.py`, and they are final only after the labeling test. Every field except `summary` can be `null` when the complaint does not say. `product`, `sub_product` and `issue` are CFPB's exact strings (`schema/allowed_values.json`).
 
 ```json
 {
-  "product": "credit card",
-  "issue": "unauthorized charge",
-  "summary": "Customer was charged twice and the bank refused a refund.",
+  "summary": "Musterinin kartindan iki defe pul tutulub, bank ise geri qaytarmaqdan imtina edib.",
+  "product": "Credit card",
+  "sub_product": "General-purpose credit card or charge card",
+  "issue": "Problem with a purchase shown on your statement",
   "money_lost": true,
-  "amount_usd": 412.50,
+  "amount": "412.50 USD",
   "customer_wants": "refund",
   "urgency": "medium"
 }
@@ -32,7 +33,8 @@ The CFPB Consumer Complaint Database, published by the US Consumer Financial Pro
 - `scripts/build_narrative_set.py` downloads the archive to `data/raw/archive/` and writes `data/interim/complaints_with_narrative.parquet` (3,851,415 complaints with a narrative, December 2011 to July 2026; August 2026 has 1). The `data/` folder is ignored by git.
 - Narrative text for 2024-2025 has a median of about 660 characters, and 58% of narratives contain XXXX redactions. Product names changed over the years, so sample from one period only: 2024-01 to 2025-12 has 2,036,435 narratives and 11 products, of which credit reporting is 76%. The smallest product, debt or credit management, has 4,198.
 - `scripts/make_sample.py` draws 5,000 complaints from 2024-01 to 2025-12, even across the 11 products, after removing exact repeats and near-copies (three-word-phrase similarity of 0.2 or more). The first sample had 42 of 500 held-out complaints with a near-copy in training. Filter to `split == "train"` whenever reading the sample, and never read held-out rows while designing the schema or prompts.
-- `scripts/explore_wants.py` asks `gpt-6.1-terra` an open question about 91 training complaints per product, to design the `customer_wants` values. The 20-complaint trial cost $0.02.
+- `scripts/explore_wants.py` asked `gpt-6.1-terra` an open question about 1,001 training complaints (91 per product) to design the `customer_wants` values. It cost $1.21. `scripts/group_wants.py` then grouped the 744 distinct phrasings of the 973 main asks into categories (`data/exploration/wants_groups.json`, $0.13). About half of the main asks were only implied, not stated.
+- `scripts/translate_narratives.py` translates all 5,000 sampled complaints into Azerbaijani with `gpt-6-luna` (prompt `translate-v2`, about $1). Translations that change a redaction, amount or date are flagged and must be excluded or redone.
 - Never use data from the owner's employer (a bank). Public data only.
 
 ## Plan
@@ -50,13 +52,17 @@ Metrics: valid-JSON rate and accuracy per field, compared with the teacher. For 
 
 - Teacher: OpenAI models through the API (Luna, Terra or Sol, chosen by tests the owner reads, because the owner is the one who reads Azerbaijani). Decided 2026-11-25: the trained weights and the OpenAI-labeled data are never published or given to anyone, because OpenAI's Services Agreement 3.3(e) allows classifiers only if they are not distributed to third parties. Code can be shared. Publishing weights later would mean relabeling with an open-weights model. Anthropic's Usage Policy forbids training on its outputs without authorization, and Gemini's terms forbid developing competing models, so neither is used.
 - Language: Azerbaijani. The owner's contribution is reviewing translations and labels, and writing a test set of 50 to 100 complaints in the style of real Azerbaijani customers (no bank data).
+- `customer_wants` values (approved 2026-11-25): `refund`, `fix_credit_report`, `fix_account_record`, `restore_access_or_funds`, `debt_relief`, `stop_activity`, `provide_information`, `review_or_investigate`, `fulfil_request`, `close_account`, `other`, plus `null`. Rule: if the customer states no ask, give the obvious remedy; use `null` only when no remedy is evident.
+- `amount` is one string with its currency code, such as `"460.00 USD"`. All training amounts are dollars, because CFPB is US data, so manat amounts are untested until the hand-written test set exists.
+- Translation model: Luna, chosen on 2026-11-25 by the owner's blind rating of 10 translations (all three were acceptable, so the cheapest won).
+- Labeling model: GPT-6.1 Terra, chosen by the owner on 2026-11-25 without a blind rating (a 10-complaint blind test was run and not read). Read 50 labels by hand before training, as the plan says.
 - Student: a 4B model such as Qwen3-4B or Gemma 3 4B. Check Hugging Face for newer models in that size class before choosing.
 - Training tool: Unsloth.
 
 ## Still open
 
-- Final schema, including the allowed values for `customer_wants` (exploration pending) and `urgency`.
-- Which OpenAI model translates, and which labels the training set.
+- Final schema and prompt: `urgency` is still a guess and needs a rule from someone who knows what a bank treats as urgent.
+- Which OpenAI model labels the training set (the blind labeling test decides).
 - Whether Qwen3-4B or Gemma 3 4B handle Azerbaijani well enough as the student.
 - The hand-written Azerbaijani test set.
 - Where to train: the local GPU or a Runpod pod.
