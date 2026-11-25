@@ -47,12 +47,7 @@ kept = []
 for name in NAMES:
     zip_path = raw / f"{name}.zip"
     if not zip_path.exists():
-        # The earlier probe saved two files under data/raw/archive-probe.
-        probe = Path("data/raw/archive-probe") / f"{name}.zip"
-        if probe.exists():
-            probe.rename(zip_path)
-        else:
-            urllib.request.urlretrieve(f"{BASE}/{name}.zip", zip_path)
+        urllib.request.urlretrieve(f"{BASE}/{name}.zip", zip_path)
     df = pd.read_csv(zip_path, dtype=str)
     has = df[NARRATIVE].notna()
     dates = pd.to_datetime(df["Date received"])
