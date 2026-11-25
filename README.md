@@ -32,6 +32,8 @@ cp .env.example .env    # then put your OpenAI API key in .env
 2. `uv run python scripts/make_sample.py` takes about a minute and writes `data/processed/sample.parquet`, with a `split` column that is `train` or `eval`, and `splits/heldout_ids.txt`.
 3. `uv run --env-file .env python scripts/explore_wants.py --limit 20` asks an OpenAI model what each of 20 training complaints asks for. The trial cost $0.02. Without `--limit` it covers 1,001 complaints, which is estimated at about $1 from the trial, and it stops at $5.
 
+To see which precision each tensor of any GGUF file uses, and its true bits per weight: `uv run scripts/inspect_gguf.py path/to/model.gguf --tensors`.
+
 Tests and lint: `uv run pytest`, `uv run ruff check scripts tests` and `uv run ruff format --check scripts tests`. `explore_wants.py` has no tests, because it needs an API key.
 
 ## Layout
