@@ -2,7 +2,7 @@
 
 Personal learning project: distill a large language model into a small one that turns a raw bank-customer complaint into a structured triage record (JSON). The small model should run locally on a 16 GB GPU.
 
-Status as of 2026-11-24: the narrative data is downloaded (see Data). Nothing else is built yet. Python environment is set up with uv (pandas, pyarrow). Next step: sample 5,000 and hold out 500.
+Status as of 2026-11-25: the narrative data is downloaded, a 5,000-complaint sample is drawn (near-copies removed), and `scripts/explore_wants.py` was trialled on 20 complaints. The schema is not final. Nothing is labeled or trained.
 
 ## The task
 
@@ -31,11 +31,13 @@ The CFPB Consumer Complaint Database, published by the US Consumer Financial Pro
 - The live bulk CSV (complaints.csv.zip) has no narrative column. CFPB moved narratives to a separate archive: 21 zip files at https://files.consumerfinance.gov/f/documents/CCDB_Export_<n>_<period>.zip, listed on consumerfinance.gov/foia-requests/foia-electronic-reading-room/cfpb-consumer-complaint-database-narratives-archive/. These download by script without a browser (the search API and the bulk CSV link returned 403 on 2026-11-24).
 - `scripts/build_narrative_set.py` downloads the archive to `data/raw/archive/` and writes `data/interim/complaints_with_narrative.parquet` (3,851,415 complaints with a narrative, December 2011 to July 2026; August 2026 has 1). The `data/` folder is ignored by git.
 - Narrative text for 2024-2025 has a median of about 660 characters, and 58% of narratives contain XXXX redactions. Product names changed over the years, so sample from one period only: 2024-01 to 2025-12 has 2,036,435 narratives and 11 products, of which credit reporting is 76%. The smallest product, debt or credit management, has 4,198.
+- `scripts/make_sample.py` draws 5,000 complaints from 2024-01 to 2025-12, even across the 11 products, after removing exact repeats and near-copies (three-word-phrase similarity of 0.2 or more). The first sample had 42 of 500 held-out complaints with a near-copy in training. Filter to `split == "train"` whenever reading the sample, and never read held-out rows while designing the schema or prompts.
+- `scripts/explore_wants.py` asks `gpt-6.1-terra` an open question about 91 training complaints per product, to design the `customer_wants` values. The 20-complaint trial cost $0.02.
 - Never use data from the owner's employer (a bank). Public data only.
 
 ## Plan
 
-1. Download the CSV in a browser and keep complaints that have a narrative.
+1. Download the narratives archive and keep complaints that have a narrative (`scripts/build_narrative_set.py`).
 2. Sample about 5,000, spread evenly across products. Hold out 500 for evaluation and never train on them.
 3. Label them with a teacher model. Read 50 teacher labels by hand before training on any.
 4. Baseline: run an untrained 4B model on the 500 held-out complaints.
@@ -46,14 +48,14 @@ Metrics: valid-JSON rate and accuracy per field, compared with the teacher. For 
 
 ## Decisions made
 
-- Teacher: an open-weights model (around 30B) run on Runpod. Some commercial APIs restrict training other models on their outputs, and an open teacher avoids that.
+- Teacher: an OpenAI model through the API (GPT-6.1 Terra for exploration; Luna, Terra or Sol for labeling, chosen after a 10-complaint comparison). Anthropic's Usage Policy forbids training on its outputs without authorization. OpenAI's Services Agreement 3.3(e) allows it for classifiers that are not distributed to third parties. The open-weights teacher (around 30B) on Runpod is the fallback.
 - Student: a 4B model such as Qwen3-4B or Gemma 3 4B. Check Hugging Face for newer models in that size class before choosing.
 - Training tool: Unsloth.
 
 ## Still open
 
-- Final schema, including the allowed values for `customer_wants` and `urgency`.
-- Which teacher model exactly.
+- Final schema, including the allowed values for `customer_wants` (exploration pending) and `urgency`.
+- Which OpenAI model labels the training set.
 - Where to train: the local GPU or a Runpod pod.
 
 ## Hardware

@@ -7,12 +7,16 @@ extracting, and writes one parquet file with the narrative rows only.
 
 Run from the project root: uv run python scripts/build_narrative_set.py
 """
+
+import shutil
 import urllib.request
 from pathlib import Path
 
 import pandas as pd
 
 BASE = "https://files.consumerfinance.gov/f/documents"
+# The 21 files on CFPB's narratives archive page on 2026-11-25. Narratives are almost
+# absent after July 2026, so later files add little.
 NAMES = [
     "CCDB_Export_1_December_2011_through_April_2018",
     "CCDB_Export_2_May_2018_through_April_2021",
@@ -38,6 +42,19 @@ NAMES = [
 ]
 NARRATIVE = "Consumer complaint narrative"
 
+
+def download(url: str, path: Path) -> None:
+    """Save url to path.
+
+    The file is written under a temporary name and renamed when complete, so an
+    interrupted download is never mistaken for a finished one.
+    """
+    partial = path.with_suffix(".part")
+    with urllib.request.urlopen(url, timeout=60) as response, partial.open("wb") as f:
+        shutil.copyfileobj(response, f)
+    partial.replace(path)
+
+
 raw = Path("data/raw/archive")
 out = Path("data/interim")
 raw.mkdir(parents=True, exist_ok=True)
@@ -47,12 +64,15 @@ kept = []
 for name in NAMES:
     zip_path = raw / f"{name}.zip"
     if not zip_path.exists():
-        urllib.request.urlretrieve(f"{BASE}/{name}.zip", zip_path)
+        download(f"{BASE}/{name}.zip", zip_path)
     df = pd.read_csv(zip_path, dtype=str)
     has = df[NARRATIVE].notna()
     dates = pd.to_datetime(df["Date received"])
-    print(f"{name}: {len(df):>9,} rows, {has.sum():>8,} with narrative "
-          f"({dates.min().date()} to {dates.max().date()})", flush=True)
+    print(
+        f"{name}: {len(df):>9,} rows, {has.sum():>8,} with narrative "
+        f"({dates.min().date()} to {dates.max().date()})",
+        flush=True,
+    )
     kept.append(df[has])
 
 data = pd.concat(kept, ignore_index=True)

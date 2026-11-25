@@ -1,9 +1,28 @@
 [project]
 name = "complaint-triage"
 version = "0.1.0"
+description = "Distill an LLM into a small model that turns a bank-customer complaint into a structured triage record."
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "openai>=3.59.0",
     "pandas>=3.1.1",
     "pyarrow>=26.0.1",
     "scikit-learn>=1.9.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
