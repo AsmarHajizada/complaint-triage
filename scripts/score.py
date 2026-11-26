@@ -44,6 +44,8 @@ lenient = [parse_lenient(r) for r in df["reply"]]
 valid = []
 for parsed in lenient:
     try:
+        if parsed and "urgency" in args.skip:
+            parsed = {"urgency": None, **parsed}  # the fine-tuned model does not write urgency
         valid.append(Triage(**parsed).model_dump() if parsed else None)
     except (ValidationError, TypeError):
         valid.append(None)

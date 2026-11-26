@@ -4,6 +4,21 @@ import json
 import re
 
 FIELDS = ["product", "sub_product", "issue", "money_lost", "amount", "customer_wants", "urgency"]
+
+# The prompt the fine-tuned model sees in training and at inference. Change it and the model
+# has to be trained again.
+SHORT_PROMPT = "Turn the complaint into a triage record. Reply with JSON only."
+# What the fine-tuned model writes, in this order. urgency is left out: the teacher gave
+# "medium" to 89% of complaints, so it carries no signal.
+STUDENT_FIELDS = [
+    "summary",
+    "product",
+    "sub_product",
+    "issue",
+    "money_lost",
+    "amount",
+    "customer_wants",
+]
 FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
 
 

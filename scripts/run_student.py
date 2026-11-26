@@ -19,10 +19,10 @@ from pathlib import Path
 
 import openai
 import pandas as pd
+from evaluation import SHORT_PROMPT
 from labeling import build_system, load_allowed
 
 SEED = 20261124
-SHORT_PROMPT = "Turn the complaint into a triage record. Reply with JSON only."
 # The teacher prompt describes the fields but never asks for JSON, because the API forced the
 # shape there. An untrained student has no such help, so the baseline has to be told.
 JSON_INSTRUCTION = (
